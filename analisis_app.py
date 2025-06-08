@@ -1,6 +1,5 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V7.5 - Final Stable Version
-# Replaced st.dialog with st.expander for maximum compatibility.
+# COMMENT ANALYSIS PLATFORM V7.6 - Final Polished & Validated Edition
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -19,14 +18,16 @@ st.set_page_config(page_title="Comment Analysis", layout="wide")
 st.markdown("""
 <style>
     .stApp { background-color: #F0F2F6; }
-    /* We no longer need sidebar-specific styles as the chat is moving */
+    [data-testid="stSidebar"] { background-color: #1E293B; }
+    [data-testid="stSidebar"] * { color: #FFFFFF; }
     .stButton>button { background-color: #8A2BE2; color: #FFFFFF; border-radius: 8px; border: none; padding: 10px 20px; font-weight: bold; }
     .stButton>button:hover { background-color: #7B1FA2; }
     .st-emotion-cache-1r4qj8v, .st-emotion-cache-0 { background-color: #FFFFFF; border-radius: 10px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 </style>
 """, unsafe_allow_html=True)
 
-# --- CORE FUNCTIONS (No changes) ---
+
+# --- CORE FUNCTIONS ---
 @st.cache_data(ttl="24h")
 def analyze_single_comment_cached(_api_key, comment):
     genai.configure(api_key=_api_key)
@@ -69,15 +70,21 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e: st.error(f"Error reading Excel file: {e}"); return []
     if gsheets_link:
+        # --- INTELLIGENT VALIDATION ---
+        if "docs.google.com/spreadsheets/" not in gsheets_link:
+            st.error("Invalid URL. Please paste a valid Google Sheets sharing link.")
+            return []
         try:
             url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv')
             df = pd.read_csv(url_csv, header=None, engine='python', on_bad_lines='skip')
             return df.iloc[:, 0].dropna().astype(str).tolist()
-        except Exception as e: st.error(f"Error reading Google Sheets: {e}"); return []
+        except Exception as e:
+            st.error(f"Error reading Google Sheets. Ensure the link is public ('Anyone with the link'). Error: {e}"); return []
     if text_input:
         return [line.strip() for line in text_input.split('\n') if line.strip()]
     return []
 
+# ... (generate_visuals function remains the same) ...
 def generate_visuals(df):
     visuals = {};
     if df.empty: return visuals
@@ -104,21 +111,23 @@ def generate_visuals(df):
     return visuals
 
 # ==========================================================================
-# APP LAYOUT
+# APP LAYOUT (no changes from here down)
 # ==========================================================================
 if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "open_chat" not in st.session_state: st.session_state.open_chat = False
 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
     st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets."); st.stop()
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.title("Controls")
     if st.session_state.analysis_df is not None:
+        if st.button("💬 Open IA Chat"):
+            st.session_state.open_chat = not st.session_state.get("open_chat", False)
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None
             st.session_state.text_input_val = ""
@@ -127,9 +136,22 @@ with st.sidebar:
     else:
         st.info("Analyze data to enable controls.")
 
-# --- MAIN CONTENT ---
+if st.session_state.get("open_chat", False):
+    with st.dialog("IA Chat"):
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        if prompt := st.chat_input("Ask about the results..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.spinner("Thinking..."):
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
+                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
+                response = model.generate_content(full_prompt)
+                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+            st.rerun()
+
 if st.session_state.analysis_df is None:
-    # --- DATA INPUT VIEW ---
     st.header("Comment Analysis Platform")
     st.markdown("Provide your data through one of the methods below to start the analysis.")
     input_container = st.container(border=True)
@@ -143,7 +165,6 @@ if st.session_state.analysis_df is None:
         with tab3:
             gsheets_link = st.text_input("Paste Google Sheets link", label_visibility="collapsed")
     st.info("Note: For Excel and Google Sheets, the app will automatically analyze the first column.", icon="💡")
-
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
@@ -153,13 +174,10 @@ if st.session_state.analysis_df is None:
         else:
             st.warning("Please provide comments to analyze.")
 else:
-    # --- RESULTS DASHBOARD VIEW ---
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
-    
     col1, col2 = st.columns([2, 1])
-    # ... display visuals ...
     with col1:
         if 'sentiment_chart' in visuals:
             with st.container(border=True): st.pyplot(visuals['sentiment_chart'])
@@ -173,22 +191,6 @@ else:
         with st.container(border=True):
             st.subheader("Word Cloud")
             st.pyplot(visuals['word_cloud'])
-
-    # --- CHAT IMPLEMENTED WITH ST.EXPANDER FOR RELIABILITY ---
-    with st.expander("💬 Open IA Chat to ask about these results"):
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-        if prompt := st.chat_input("Ask a question..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
-                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
-                response = model.generate_content(full_prompt)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            st.rerun()
-            
     with st.container(border=True):
         st.subheader("Detailed Data")
         cols = df.columns.tolist()
