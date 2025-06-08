@@ -228,7 +228,7 @@ with input_container:
                     st.error(f"An error occurred: {e}. Ensure your API Key is set in Streamlit Secrets.")
 
 # --- RESULTS & INTERACTIVE DASHBOARD AREA ---
-if st.session_state.analysis_df is not in None:
+if st.session_state.analysis_df is not None:
     df = st.session_state.analysis_df
     
     st.success("Analysis Complete!")
