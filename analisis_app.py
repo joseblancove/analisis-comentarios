@@ -1,6 +1,5 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V7.0 - Performance Edition
-# Concurrent processing, real-time feedback, and intelligent data loading.
+# COMMENT ANALYSIS PLATFORM V7.1 - Final Version with Functional Chat
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -15,26 +14,19 @@ import concurrent.futures
 # --- Page Configuration ---
 st.set_page_config(page_title="Comment Analysis", layout="wide")
 
-# --- STYLE INJECTION (Professional Light Theme with Dark Sidebar) ---
+# --- STYLE INJECTION ---
 st.markdown("""
 <style>
-    /* Main Content Area */
     .stApp { background-color: #F0F2F6; }
-    /* Sidebar */
     [data-testid="stSidebar"] { background-color: #1E293B; }
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p, [data-testid="stSidebar"] small { color: #FFFFFF; }
-    /* Main Action Button */
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p, [data-testid="stSidebar"] small, [data-testid="stSidebar"] label { color: #FFFFFF; }
     .stButton>button { background-color: #8A2BE2; color: #FFFFFF; border-radius: 8px; border: none; padding: 10px 20px; font-weight: bold; }
     .stButton>button:hover { background-color: #7B1FA2; }
-    /* Containers/Cards in Main Area */
     .st-emotion-cache-1r4qj8v, .st-emotion-cache-0 { background-color: #FFFFFF; border-radius: 10px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 </style>
 """, unsafe_allow_html=True)
 
-
 # --- CORE FUNCTIONS ---
-
-# This function is the "worker" that analyzes one comment.
 def analyze_single_comment(api_key, comment):
     """Analyzes one comment. Designed to be called by concurrent workers."""
     genai.configure(api_key=api_key)
@@ -68,15 +60,11 @@ def run_concurrent_analysis(_api_key, comments):
     results = []
     total_comments = len(comments)
     progress_bar = st.progress(0, text="Initializing analysis...")
-    
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        # Prepare future tasks
         future_to_comment = {executor.submit(analyze_single_comment, _api_key, comment): comment for comment in comments}
-        
         for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
             results.append(future.result())
             progress_bar.progress((i + 1) / total_comments, text=f"Analyzing comment {i+1}/{total_comments}")
-            
     return pd.DataFrame(results)
 
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
@@ -84,29 +72,23 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            # INTELLIGENCE: Automatically use the first column
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e:
-            st.error(f"Error reading Excel file: {e}")
-            return []
+            st.error(f"Error reading Excel file: {e}"); return []
     if gsheets_link:
         try:
             url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv')
             df = pd.read_csv(url_csv, engine='python', on_bad_lines='skip')
-            # INTELLIGENCE: Automatically use the first column
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e:
-            st.error(f"Error reading Google Sheets: {e}")
-            return []
+            st.error(f"Error reading Google Sheets: {e}"); return []
     if text_input:
         return [line.strip() for line in text_input.split('\n') if line.strip()]
     return []
 
-# --- Visualization and other functions remain the same ---
 def generate_visuals(df):
     visuals = {}
     if df.empty: return visuals
-    # Sentiment Chart
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e', 'Error': '#7f7f7f'}
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral', 'Error'] if s in sentiment_counts.index]
@@ -118,7 +100,6 @@ def generate_visuals(df):
         percentage = f'{100 * p.get_height() / total:.1f}%'
         ax_sent.annotate(percentage, (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 5), textcoords='offset points')
     visuals['sentiment_chart'] = fig_sent
-    # Word Cloud
     stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso']
     text_for_cloud = ' '.join(df['Original Comment'].dropna())
     text_no_emojis = ''.join(c for c in text_for_cloud if c not in emoji.EMOJI_DATA)
@@ -126,7 +107,6 @@ def generate_visuals(df):
         wc = WordCloud(width=800, height=400, background_color='white', stopwords=set(stopwords_es), collocations=False).generate(text_no_emojis)
         fig_wc, ax_wc = plt.subplots(); ax_wc.imshow(wc, interpolation='bilinear'); ax_wc.axis('off')
         visuals['word_cloud'] = fig_wc
-    # Emoji Ranking
     all_emojis = [c for c in ''.join(df['Original Comment'].dropna()) if c in emoji.EMOJI_DATA]
     if all_emojis:
         visuals['emoji_ranking'] = Counter(all_emojis).most_common(5)
@@ -135,28 +115,42 @@ def generate_visuals(df):
 # ==========================================================================
 # APP LAYOUT
 # ==========================================================================
-
-# Initialize session state
 if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 
-# API Key Check
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets.")
-    st.stop()
+    st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets."); st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (WITH FUNCTIONAL CHAT RESTORED) ---
 with st.sidebar:
     st.title("IA Chat")
-    # ... (Sidebar chat logic remains the same) ...
+    
     if st.session_state.analysis_df is not None:
         st.write("Ask questions about the results.")
-        # ... Chat logic ...
+        # Display chat history
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        # Accept user input
+        if prompt := st.chat_input("What is the main complaint?"):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.chat_message("user"): st.markdown(prompt)
+            # Generate and display assistant response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    context_for_ia = f"Here is the full analysis data in a dataframe:\n{st.session_state.analysis_df.to_string()}"
+                    model = genai.GenerativeModel('gemini-1.5-pro')
+                    full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- ANALYSIS DATA ---\n{context_for_ia}\n--- END DATA ---\nUSER QUESTION: {prompt}"
+                    response = model.generate_content(full_prompt)
+                    response_text = response.text
+                    st.markdown(response_text)
+            st.session_state.chat_history.append({"role": "assistant", "content": response_text})
     else:
         st.write("Analyze data to enable chat.")
+    
     if st.session_state.analysis_df is not None:
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None
@@ -188,11 +182,9 @@ if st.session_state.analysis_df is None:
         else:
             st.warning("Please provide comments to analyze.")
 else:
-    # --- RESULTS DASHBOARD VIEW ---
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
-    
     col1, col2 = st.columns([2, 1])
     with col1:
         if 'sentiment_chart' in visuals:
