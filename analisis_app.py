@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V8.0 - The Final Stable Edition
-# Based on user feedback for maximum stability and reliability.
+# COMMENT ANALYSIS PLATFORM V9.0 - The Director's Cut
+# Final version with user-preferred progress bar and bulletproof validation.
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -11,6 +11,7 @@ import time
 import emoji
 from collections import Counter
 import concurrent.futures
+import re
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Comment Analysis", layout="wide")
@@ -51,15 +52,17 @@ def analyze_single_comment_cached(_api_key, comment):
     except Exception:
         return {'Original Comment': comment, 'Sentiment': 'Error', 'Explanation': 'Failed to analyze.'}
 
-def run_analysis(api_key, comments):
-    """Simplified analysis runner with a spinner."""
+def run_concurrent_analysis(api_key, comments, progress_bar_placeholder):
+    """Manages concurrent analysis with real-time progress updates."""
     results = []
-    with st.spinner(f"Analyzing {len(comments)} comments... This may take a moment."):
-        for comment in comments:
-            # We call the cached function here. If the comment was analyzed before, it will be instant.
-            results.append(analyze_single_comment_cached(api_key, comment))
+    total_comments = len(comments)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_comment = {executor.submit(analyze_single_comment_cached, api_key, comment): comment for comment in comments}
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
+            results.append(future.result())
+            progress_bar_placeholder.progress((i + 1) / total_comments, text=f"Analyzing comment {i+1}/{total_comments}")
+    progress_bar_placeholder.empty()
     return pd.DataFrame(results)
-
 
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     """Intelligently loads and validates comments from the provided source."""
@@ -69,11 +72,13 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e: st.error(f"Error reading Excel file: {e}"); return []
     if gsheets_link:
-        if "docs.google.com/spreadsheets/" not in gsheets_link:
+        # --- BULLETPROOF VALIDATION using Regular Expressions ---
+        pattern = re.compile(r'^https:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9_-]+(\/edit.*)?$')
+        if not pattern.match(gsheets_link):
             st.error("Invalid URL. Please paste a valid Google Sheets sharing link.")
             return []
         try:
-            url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv')
+            url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv').split('/edit')[0] + '/export?format=csv'
             df = pd.read_csv(url_csv, header=None, engine='python', on_bad_lines='skip')
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e:
@@ -85,7 +90,7 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
 def generate_visuals(df):
     visuals = {};
     if df.empty: return visuals
-    # ... (Visuals generation logic remains the same, it's already solid) ...
+    # ... Visuals generation logic remains the same ...
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e', 'Error': '#7f7f7f'}
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral', 'Error'] if s in sentiment_counts.index]
@@ -120,7 +125,6 @@ try:
 except:
     st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets."); st.stop()
 
-# --- Simplified Sidebar ---
 with st.sidebar:
     st.title("Controls")
     if st.session_state.analysis_df is not None:
@@ -132,7 +136,6 @@ with st.sidebar:
     else:
         st.info("Analyze data to enable controls.")
 
-# --- MAIN CONTENT ---
 if st.session_state.analysis_df is None:
     st.header("Comment Analysis Platform")
     st.markdown("Provide your data through one of the methods below to start the analysis.")
@@ -151,33 +154,16 @@ if st.session_state.analysis_df is None:
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
-            st.session_state.analysis_df = run_analysis(api_key, comments)
+            progress_bar_placeholder = st.empty()
+            st.session_state.analysis_df = run_concurrent_analysis(api_key, comments, progress_bar_placeholder)
             st.rerun()
         else:
             st.warning("Please provide comments to analyze.")
 else:
-    # --- RESULTS DASHBOARD VIEW ---
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
-    visuals = generate_visuals(df)
     
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if 'sentiment_chart' in visuals:
-            with st.container(border=True): st.pyplot(visuals['sentiment_chart'])
-    with col2:
-        if 'emoji_ranking' in visuals:
-            with st.container(border=True):
-                st.subheader("Top Emojis")
-                for emoji_char, count in visuals['emoji_ranking']:
-                    st.markdown(f"### {emoji_char} &nbsp;&nbsp;`x{count}`")
-
-    if 'word_cloud' in visuals:
-        with st.container(border=True):
-            st.subheader("Word Cloud")
-            st.pyplot(visuals['word_cloud'])
-
-    with st.expander("💬 Open IA Chat to ask about these results"):
+    with st.expander("💬 Open IA Chat to ask about these results", expanded=True):
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
@@ -190,7 +176,22 @@ else:
                 response = model.generate_content(full_prompt)
                 st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             st.rerun()
-            
+    
+    visuals = generate_visuals(df)
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if 'sentiment_chart' in visuals:
+            with st.container(border=True): st.pyplot(visuals['sentiment_chart'])
+    with col2:
+        if 'emoji_ranking' in visuals:
+            with st.container(border=True):
+                st.subheader("Top Emojis")
+                for emoji_char, count in visuals['emoji_ranking']:
+                    st.markdown(f"### {emoji_char} &nbsp;&nbsp;`x{count}`")
+    if 'word_cloud' in visuals:
+        with st.container(border=True):
+            st.subheader("Word Cloud")
+            st.pyplot(visuals['word_cloud'])
     with st.container(border=True):
         st.subheader("Detailed Data")
         cols = df.columns.tolist()
@@ -199,3 +200,6 @@ else:
             st.dataframe(df[cols])
         else:
             st.dataframe(df)
+
+
+
