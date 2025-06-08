@@ -1,5 +1,6 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V7.6 - Final Polished & Validated Edition
+# COMMENT ANALYSIS PLATFORM V8.0 - The Final Stable Edition
+# Based on user feedback for maximum stability and reliability.
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -18,8 +19,6 @@ st.set_page_config(page_title="Comment Analysis", layout="wide")
 st.markdown("""
 <style>
     .stApp { background-color: #F0F2F6; }
-    [data-testid="stSidebar"] { background-color: #1E293B; }
-    [data-testid="stSidebar"] * { color: #FFFFFF; }
     .stButton>button { background-color: #8A2BE2; color: #FFFFFF; border-radius: 8px; border: none; padding: 10px 20px; font-weight: bold; }
     .stButton>button:hover { background-color: #7B1FA2; }
     .st-emotion-cache-1r4qj8v, .st-emotion-cache-0 { background-color: #FFFFFF; border-radius: 10px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
@@ -52,25 +51,24 @@ def analyze_single_comment_cached(_api_key, comment):
     except Exception:
         return {'Original Comment': comment, 'Sentiment': 'Error', 'Explanation': 'Failed to analyze.'}
 
-def run_concurrent_analysis(api_key, comments, progress_bar_placeholder):
+def run_analysis(api_key, comments):
+    """Simplified analysis runner with a spinner."""
     results = []
-    total_comments = len(comments)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_comment = {executor.submit(analyze_single_comment_cached, api_key, comment): comment for comment in comments}
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
-            results.append(future.result())
-            progress_bar_placeholder.progress((i + 1) / total_comments, text=f"Analyzing comment {i+1}/{total_comments}")
-    progress_bar_placeholder.empty()
+    with st.spinner(f"Analyzing {len(comments)} comments... This may take a moment."):
+        for comment in comments:
+            # We call the cached function here. If the comment was analyzed before, it will be instant.
+            results.append(analyze_single_comment_cached(api_key, comment))
     return pd.DataFrame(results)
 
+
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
+    """Intelligently loads and validates comments from the provided source."""
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file, header=None)
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e: st.error(f"Error reading Excel file: {e}"); return []
     if gsheets_link:
-        # --- INTELLIGENT VALIDATION ---
         if "docs.google.com/spreadsheets/" not in gsheets_link:
             st.error("Invalid URL. Please paste a valid Google Sheets sharing link.")
             return []
@@ -84,10 +82,10 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
         return [line.strip() for line in text_input.split('\n') if line.strip()]
     return []
 
-# ... (generate_visuals function remains the same) ...
 def generate_visuals(df):
     visuals = {};
     if df.empty: return visuals
+    # ... (Visuals generation logic remains the same, it's already solid) ...
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e', 'Error': '#7f7f7f'}
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral', 'Error'] if s in sentiment_counts.index]
@@ -111,23 +109,21 @@ def generate_visuals(df):
     return visuals
 
 # ==========================================================================
-# APP LAYOUT (no changes from here down)
+# APP LAYOUT
 # ==========================================================================
 if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "open_chat" not in st.session_state: st.session_state.open_chat = False
 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
     st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets."); st.stop()
 
+# --- Simplified Sidebar ---
 with st.sidebar:
     st.title("Controls")
     if st.session_state.analysis_df is not None:
-        if st.button("💬 Open IA Chat"):
-            st.session_state.open_chat = not st.session_state.get("open_chat", False)
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None
             st.session_state.text_input_val = ""
@@ -136,21 +132,7 @@ with st.sidebar:
     else:
         st.info("Analyze data to enable controls.")
 
-if st.session_state.get("open_chat", False):
-    with st.dialog("IA Chat"):
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-        if prompt := st.chat_input("Ask about the results..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
-                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
-                response = model.generate_content(full_prompt)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            st.rerun()
-
+# --- MAIN CONTENT ---
 if st.session_state.analysis_df is None:
     st.header("Comment Analysis Platform")
     st.markdown("Provide your data through one of the methods below to start the analysis.")
@@ -165,18 +147,20 @@ if st.session_state.analysis_df is None:
         with tab3:
             gsheets_link = st.text_input("Paste Google Sheets link", label_visibility="collapsed")
     st.info("Note: For Excel and Google Sheets, the app will automatically analyze the first column.", icon="💡")
+
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
-            progress_bar_placeholder = st.empty()
-            st.session_state.analysis_df = run_concurrent_analysis(api_key, comments, progress_bar_placeholder)
+            st.session_state.analysis_df = run_analysis(api_key, comments)
             st.rerun()
         else:
             st.warning("Please provide comments to analyze.")
 else:
+    # --- RESULTS DASHBOARD VIEW ---
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
+    
     col1, col2 = st.columns([2, 1])
     with col1:
         if 'sentiment_chart' in visuals:
@@ -187,10 +171,26 @@ else:
                 st.subheader("Top Emojis")
                 for emoji_char, count in visuals['emoji_ranking']:
                     st.markdown(f"### {emoji_char} &nbsp;&nbsp;`x{count}`")
+
     if 'word_cloud' in visuals:
         with st.container(border=True):
             st.subheader("Word Cloud")
             st.pyplot(visuals['word_cloud'])
+
+    with st.expander("💬 Open IA Chat to ask about these results"):
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        if prompt := st.chat_input("Ask a question..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.spinner("Thinking..."):
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
+                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
+                response = model.generate_content(full_prompt)
+                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+            st.rerun()
+            
     with st.container(border=True):
         st.subheader("Detailed Data")
         cols = df.columns.tolist()
