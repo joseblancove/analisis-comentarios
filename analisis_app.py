@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V7.2 - Polished UX Edition
-# Stable chat window and universal text legibility.
+# COMMENT ANALYSIS PLATFORM V7.3 - The Definitive Experience
+# Modal Chat, Enhanced Stopwords, and Real-time Progress Counter.
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -15,57 +15,22 @@ import concurrent.futures
 # --- Page Configuration ---
 st.set_page_config(page_title="Comment Analysis", layout="wide")
 
-# --- STYLE INJECTION (Final Version) ---
+# --- STYLE INJECTION ---
 st.markdown("""
 <style>
-    /* Main Content Area */
     .stApp { background-color: #F0F2F6; }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #1E293B;
-    }
-    
-    /* FIX: Universal text color for high contrast inside the sidebar */
-    [data-testid="stSidebar"] * {
-        color: #FFFFFF;
-    }
-
-    /* Main Action Button */
+    [data-testid="stSidebar"] { background-color: #1E293B; }
+    [data-testid="stSidebar"] * { color: #FFFFFF; }
     .stButton>button { background-color: #8A2BE2; color: #FFFFFF; border-radius: 8px; border: none; padding: 10px 20px; font-weight: bold; }
     .stButton>button:hover { background-color: #7B1FA2; }
-    
-    /* Containers/Cards in Main Area */
     .st-emotion-cache-1r4qj8v, .st-emotion-cache-0 { background-color: #FFFFFF; border-radius: 10px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-
-    /* FEATURE: Fixed-height, scrollable chat history container */
-    .chat-container {
-        height: 400px; /* Adjust height as needed */
-        overflow-y: auto;
-        margin-bottom: 15px;
-        border: 1px solid #334155;
-        border-radius: 10px;
-        padding: 10px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 
-# --- CORE FUNCTIONS (No changes from v7.0) ---
-@st.cache_data(ttl="1h")
-def get_analysis_from_ai(_api_key, comments):
-    genai.configure(api_key=_api_key)
-    model = genai.GenerativeModel('gemini-1.5-pro')
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_comment = {executor.submit(analyze_single_comment, model, comment): comment for comment in comments}
-        progress_bar = st.progress(0, text="Initializing analysis...")
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
-            results.append(future.result())
-            progress_bar.progress((i + 1) / len(comments), text=f"Analyzing comment {i+1}/{len(comments)}")
-    return pd.DataFrame(results)
-
+# --- CORE FUNCTIONS ---
 def analyze_single_comment(model, comment):
+    """Worker function to analyze one comment."""
     prompt = f"""
     Act as a world-class sentiment analysis expert. Your analysis must be sharp and decisive.
     Analyze the following customer comment. Acknowledge and interpret all emojis.
@@ -89,7 +54,28 @@ def analyze_single_comment(model, comment):
     except Exception:
         return {'Original Comment': comment, 'Sentiment': 'Error', 'Explanation': 'Failed to analyze.'}
 
+@st.cache_data(ttl="1h")
+def run_concurrent_analysis(_api_key, comments, progress_bar_placeholder):
+    """Manages concurrent analysis with real-time progress updates."""
+    genai.configure(api_key=_api_key)
+    model = genai.GenerativeModel('gemini-1.5-pro')
+    results = []
+    total_comments = len(comments)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_comment = {executor.submit(analyze_single_comment, model, comment): comment for comment in comments}
+        
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
+            results.append(future.result())
+            # FIX: Real-time progress bar update
+            progress_bar_placeholder.progress((i + 1) / total_comments, text=f"Analyzing comment {i+1}/{total_comments}")
+            
+    progress_bar_placeholder.empty() # Clear the progress bar when done
+    return pd.DataFrame(results)
+
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
+    """Intelligently loads comments from the first available source."""
+    # ... (Logic remains the same, omitted for brevity)
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
@@ -110,24 +96,27 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
 def generate_visuals(df):
     visuals = {}
     if df.empty: return visuals
+    # ... (Sentiment Chart logic remains the same)
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e', 'Error': '#7f7f7f'}
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral', 'Error'] if s in sentiment_counts.index]
-    fig_sent, ax_sent = plt.subplots()
-    sentiment_counts.loc[plot_order].plot(kind='bar', ax=ax_sent, color=[color_map.get(s) for s in plot_order])
+    fig_sent, ax_sent = plt.subplots(); sentiment_counts.loc[plot_order].plot(kind='bar', ax=ax_sent, color=[color_map.get(s) for s in plot_order])
     ax_sent.set_ylabel('Number of Comments'); ax_sent.set_xticklabels(ax_sent.get_xticklabels(), rotation=0)
     total = len(df)
     for p in ax_sent.patches:
         percentage = f'{100 * p.get_height() / total:.1f}%'
         ax_sent.annotate(percentage, (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 5), textcoords='offset points')
     visuals['sentiment_chart'] = fig_sent
-    stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso']
+    
+    # FIX: Greatly expanded stopwords list
+    stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'mas', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso', 'te', 'estar', 'así', 'así', 'hacer', 'tiene', 'tienes', 'ser', 'eres', 'soy', 'es']
     text_for_cloud = ' '.join(df['Original Comment'].dropna())
     text_no_emojis = ''.join(c for c in text_for_cloud if c not in emoji.EMOJI_DATA)
     if text_no_emojis.strip():
         wc = WordCloud(width=800, height=400, background_color='white', stopwords=set(stopwords_es), collocations=False).generate(text_no_emojis)
         fig_wc, ax_wc = plt.subplots(); ax_wc.imshow(wc, interpolation='bilinear'); ax_wc.axis('off')
         visuals['word_cloud'] = fig_wc
+        
     all_emojis = [c for c in ''.join(df['Original Comment'].dropna()) if c in emoji.EMOJI_DATA]
     if all_emojis:
         visuals['emoji_ranking'] = Counter(all_emojis).most_common(5)
@@ -145,41 +134,34 @@ try:
 except:
     st.error("FATAL ERROR: Your Google AI API Key is not configured in Streamlit Secrets."); st.stop()
 
-# --- SIDEBAR (WITH STABLE CHAT) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("IA Chat")
-    
-    # Create a container for the chat history
-    chat_container = st.container()
-    
+    st.title("Controls")
     if st.session_state.analysis_df is not None:
-        with chat_container:
-            # Add the CSS class for fixed height and scrolling
-            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-            for message in st.session_state.chat_history:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        if prompt := st.chat_input("Ask about the results..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                context_for_ia = f"Here is the full analysis data in a dataframe:\n{st.session_state.analysis_df.to_string()}"
-                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- ANALYSIS DATA ---\n{context_for_ia}\n--- END DATA ---\nUSER QUESTION: {prompt}"
-                response = model.generate_content(full_prompt)
-                response_text = response.text
-                st.session_state.chat_history.append({"role": "assistant", "content": response_text})
-            st.rerun() # Rerun to display the new message in the container
-    else:
-        st.write("Analyze data to enable chat.")
-    
-    st.write("") # Spacer
-    if st.session_state.analysis_df is not None:
+        if st.button("💬 Open IA Chat"):
+            st.session_state.open_chat = True
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None
             st.session_state.text_input_val = ""
             st.session_state.chat_history = []
+            st.rerun()
+    else:
+        st.info("Analyze data to enable controls.")
+
+# --- CHAT MODAL (replaces sidebar chat) ---
+if "open_chat" in st.session_state and st.session_state.open_chat:
+    with st.dialog("IA Chat"):
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        if prompt := st.chat_input("Ask about the results..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.spinner("Thinking..."):
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
+                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
+                response = model.generate_content(full_prompt)
+                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             st.rerun()
 
 # --- MAIN CONTENT ---
@@ -197,10 +179,12 @@ if st.session_state.analysis_df is None:
         with tab3:
             gsheets_link = st.text_input("Paste Google Sheets link", label_visibility="collapsed")
     st.info("Note: For Excel and Google Sheets, the app will automatically analyze the first column.", icon="💡")
+
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
-            st.session_state.analysis_df = get_analysis_from_ai(api_key, comments)
+            progress_bar_placeholder = st.empty() # Create a placeholder for the progress bar
+            st.session_state.analysis_df = run_concurrent_analysis(api_key, comments, progress_bar_placeholder)
             st.rerun()
         else:
             st.warning("Please provide comments to analyze.")
@@ -209,6 +193,7 @@ else:
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
+    # ... (Display logic remains the same) ...
     col1, col2 = st.columns([2, 1])
     with col1:
         if 'sentiment_chart' in visuals:
