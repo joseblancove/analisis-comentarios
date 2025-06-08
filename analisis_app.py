@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V10.0 - Batch Processing Edition
-# Final architecture for high-performance, large-scale analysis.
+# COMMENT ANALYSIS PLATFORM V11.0 - The Grand Finale
+# Merging the high-performance batch engine of v10 with the perfect UI of v9.
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -29,33 +29,13 @@ st.markdown("""
 
 
 # --- CORE FUNCTIONS ---
-def parse_ai_batch_response(response_text, original_batch):
-    """Parses the structured JSON-like response from the AI for a batch."""
-    try:
-        # The response might be inside a markdown code block
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0]
-        
-        analyses = json.loads(response_text)
-        # Match original comments with analyses, assuming order is preserved
-        for i, analysis in enumerate(analyses):
-            if i < len(original_batch):
-                analysis['Original Comment'] = original_batch[i]
-        return analyses
-    except (json.JSONDecodeError, IndexError):
-        # Fallback if JSON is malformed: return error for the whole batch
-        return [{'Original Comment': c, 'Sentiment': 'Error', 'Explanation': 'Batch parsing failed.'} for c in original_batch]
-
-
 @st.cache_data(ttl="24h")
 def analyze_comment_batch_cached(_api_key, comment_batch):
     """Worker function to analyze a BATCH of comments."""
     genai.configure(api_key=_api_key)
     model = genai.GenerativeModel('gemini-1.5-pro')
     
-    # Create a numbered list of comments for the prompt
     comments_str = "\n".join([f'{i+1}. "{comment}"' for i, comment in enumerate(comment_batch)])
-    
     prompt = f"""
     Act as a sentiment analysis API. Analyze EACH of the following customer comments.
     Your response MUST be a single, valid JSON array `[]` containing one JSON object `{{}}` for each comment.
@@ -63,34 +43,37 @@ def analyze_comment_batch_cached(_api_key, comment_batch):
     Each JSON object must have these exact keys: "Sentiment", "Explanation".
     - Sentiment: Must be one of "Positive", "Negative", or "Neutral".
     - Explanation: A concise justification for the sentiment.
-
-    Here is the list of comments to analyze:
+    COMMENT LIST:
     {comments_str}
     """
     try:
         response = model.generate_content(prompt)
-        return parse_ai_batch_response(response.text, comment_batch)
+        if "```json" in response.text:
+            json_str = response.text.split("```json")[1].split("```")[0]
+        else:
+            json_str = response.text
+        analyses = json.loads(json_str)
+        for i, analysis in enumerate(analyses):
+            if i < len(comment_batch):
+                analysis['Original Comment'] = comment_batch[i]
+        return analyses
     except Exception as e:
-        return [{'Original Comment': c, 'Sentiment': 'Error', 'Explanation': f'API call failed: {e}'} for c in comment_batch]
+        return [{'Original Comment': c, 'Sentiment': 'Error', 'Explanation': f'Batch processing failed: {e}'} for c in comment_batch]
 
-def run_batch_analysis(api_key, comments, progress_bar_placeholder):
+def run_batch_analysis(api_key, comments):
     """Manages concurrent execution of BATCH comment analysis."""
     results = []
-    batch_size = 50 # Process 50 comments per API call
+    batch_size = 50
     comment_batches = [comments[i:i + batch_size] for i in range(0, len(comments), batch_size)]
-    total_batches = len(comment_batches)
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor: # Fewer workers for batch processing
-        future_to_batch = {executor.submit(analyze_comment_batch_cached, api_key, batch): batch for batch in comment_batches}
-        
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_batch)):
-            results.extend(future.result())
-            progress_bar_placeholder.progress((i + 1) / total_batches, text=f"Processing batch {i+1}/{total_batches}")
-            
-    progress_bar_placeholder.empty()
+    with st.spinner("Analyzing comments..."):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_batch = {executor.submit(analyze_comment_batch_cached, api_key, batch): batch for batch in comment_batches}
+            for future in concurrent.futures.as_completed(future_to_batch):
+                results.extend(future.result())
+                
     return pd.DataFrame(results)
 
-# ... Other functions (load_comments, generate_visuals) remain the same and are correct ...
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     if uploaded_file:
         try:
@@ -100,8 +83,7 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     if gsheets_link:
         pattern = re.compile(r'^https:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9_-]+(\/edit.*)?$')
         if not pattern.match(gsheets_link):
-            st.error("Invalid URL. Please paste a valid Google Sheets sharing link.")
-            return []
+            st.error("Invalid URL. Please paste a valid Google Sheets sharing link."); return []
         try:
             url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv').split('/edit')[0] + '/export?format=csv'
             df = pd.read_csv(url_csv, header=None, engine='python', on_bad_lines='skip')
@@ -141,11 +123,9 @@ def generate_visuals(df):
 # ==========================================================================
 # APP LAYOUT
 # ==========================================================================
-# ... The entire App Layout section remains the same, but the call to the analysis function will now be different ...
 if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "open_chat" not in st.session_state: st.session_state.open_chat = False
 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
@@ -155,28 +135,10 @@ except:
 with st.sidebar:
     st.title("Controls")
     if st.session_state.analysis_df is not None:
-        if st.button("💬 Open IA Chat"):
-            st.session_state.open_chat = not st.session_state.get("open_chat", False)
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None; st.session_state.text_input_val = ""; st.session_state.chat_history = []; st.rerun()
     else:
         st.info("Analyze data to enable controls.")
-
-if st.session_state.get("open_chat", False):
-    with st.dialog("IA Chat"):
-        # ... Chat logic remains the same ...
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-        if prompt := st.chat_input("Ask about the results..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
-                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
-                response = model.generate_content(full_prompt)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            st.rerun()
 
 if st.session_state.analysis_df is None:
     st.header("Comment Analysis Platform")
@@ -196,17 +158,15 @@ if st.session_state.analysis_df is None:
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
-            progress_bar_placeholder = st.empty()
-            st.session_state.analysis_df = run_batch_analysis(api_key, comments, progress_bar_placeholder) # Updated function call
+            st.session_state.analysis_df = run_batch_analysis(api_key, comments)
             st.rerun()
         else:
             st.warning("Please provide comments to analyze.")
 else:
-    # --- RESULTS DASHBOARD VIEW ---
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
-    # ... (Display logic remains the same) ...
+    
     col1, col2 = st.columns([2, 1])
     with col1:
         if 'sentiment_chart' in visuals:
@@ -221,6 +181,22 @@ else:
         with st.container(border=True):
             st.subheader("Word Cloud")
             st.pyplot(visuals['word_cloud'])
+
+    # --- CHAT FUNCTIONALITY RESTORED (from v9.0) ---
+    with st.expander("💬 Open IA Chat to ask about these results", expanded=True):
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        if prompt := st.chat_input("Ask a question..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.spinner("Thinking..."):
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
+                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
+                response = model.generate_content(full_prompt)
+                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+            st.rerun()
+            
     with st.container(border=True):
         st.subheader("Detailed Data")
         cols = df.columns.tolist()
@@ -229,6 +205,5 @@ else:
             st.dataframe(df[cols])
         else:
             st.dataframe(df)
-
 
 
