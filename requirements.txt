@@ -4,4 +4,4 @@ google-generativeai
 wordcloud
 matplotlib
 openpyxl
-Emoji
+emoji
