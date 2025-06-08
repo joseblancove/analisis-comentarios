@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------
-# COMMENT ANALYSIS PLATFORM V7.3 - The Definitive Experience
-# Modal Chat, Enhanced Stopwords, and Real-time Progress Counter.
+# COMMENT ANALYSIS PLATFORM V7.4 - Intelligent Cache Edition
+# Final professional architecture with smart caching and robust UI.
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -29,8 +29,17 @@ st.markdown("""
 
 
 # --- CORE FUNCTIONS ---
-def analyze_single_comment(model, comment):
-    """Worker function to analyze one comment."""
+# FIX: Caching is now applied to the individual worker function for robustness.
+@st.cache_data(ttl="24h")
+def analyze_single_comment_cached(_api_key, comment):
+    """
+    Worker function to analyze one comment. This is the cached part.
+    The api_key is passed to ensure the cache is valid for a specific user.
+    """
+    # Configure GenAI within the cached function
+    genai.configure(api_key=_api_key)
+    model = genai.GenerativeModel('gemini-1.5-pro')
+    
     prompt = f"""
     Act as a world-class sentiment analysis expert. Your analysis must be sharp and decisive.
     Analyze the following customer comment. Acknowledge and interpret all emojis.
@@ -54,38 +63,36 @@ def analyze_single_comment(model, comment):
     except Exception:
         return {'Original Comment': comment, 'Sentiment': 'Error', 'Explanation': 'Failed to analyze.'}
 
-@st.cache_data(ttl="1h")
-def run_concurrent_analysis(_api_key, comments, progress_bar_placeholder):
-    """Manages concurrent analysis with real-time progress updates."""
-    genai.configure(api_key=_api_key)
-    model = genai.GenerativeModel('gemini-1.5-pro')
+def run_concurrent_analysis(api_key, comments, progress_bar_placeholder):
+    """
+    Manages the concurrent execution of comment analysis. THIS FUNCTION IS NOT CACHED.
+    It calls the cached worker function.
+    """
     results = []
     total_comments = len(comments)
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_comment = {executor.submit(analyze_single_comment, model, comment): comment for comment in comments}
+        future_to_comment = {executor.submit(analyze_single_comment_cached, api_key, comment): comment for comment in comments}
         
         for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
             results.append(future.result())
-            # FIX: Real-time progress bar update
             progress_bar_placeholder.progress((i + 1) / total_comments, text=f"Analyzing comment {i+1}/{total_comments}")
             
-    progress_bar_placeholder.empty() # Clear the progress bar when done
+    progress_bar_placeholder.empty()
     return pd.DataFrame(results)
 
+# ... Other functions (load_comments, generate_visuals) remain the same ...
 def load_comments_from_source(uploaded_file, gsheets_link, text_input):
-    """Intelligently loads comments from the first available source."""
-    # ... (Logic remains the same, omitted for brevity)
     if uploaded_file:
         try:
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(uploaded_file, header=None)
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e:
             st.error(f"Error reading Excel file: {e}"); return []
     if gsheets_link:
         try:
             url_csv = gsheets_link.replace('/edit?usp=sharing', '/export?format=csv')
-            df = pd.read_csv(url_csv, engine='python', on_bad_lines='skip')
+            df = pd.read_csv(url_csv, header=None, engine='python', on_bad_lines='skip')
             return df.iloc[:, 0].dropna().astype(str).tolist()
         except Exception as e:
             st.error(f"Error reading Google Sheets: {e}"); return []
@@ -94,9 +101,8 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     return []
 
 def generate_visuals(df):
-    visuals = {}
+    visuals = {};
     if df.empty: return visuals
-    # ... (Sentiment Chart logic remains the same)
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e', 'Error': '#7f7f7f'}
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral', 'Error'] if s in sentiment_counts.index]
@@ -107,16 +113,13 @@ def generate_visuals(df):
         percentage = f'{100 * p.get_height() / total:.1f}%'
         ax_sent.annotate(percentage, (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 5), textcoords='offset points')
     visuals['sentiment_chart'] = fig_sent
-    
-    # FIX: Greatly expanded stopwords list
-    stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'mas', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso', 'te', 'estar', 'así', 'así', 'hacer', 'tiene', 'tienes', 'ser', 'eres', 'soy', 'es']
+    stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'mas', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso', 'te', 'estar', 'así', 'hacer', 'tiene', 'tienes', 'ser', 'eres', 'soy', 'es']
     text_for_cloud = ' '.join(df['Original Comment'].dropna())
     text_no_emojis = ''.join(c for c in text_for_cloud if c not in emoji.EMOJI_DATA)
     if text_no_emojis.strip():
         wc = WordCloud(width=800, height=400, background_color='white', stopwords=set(stopwords_es), collocations=False).generate(text_no_emojis)
         fig_wc, ax_wc = plt.subplots(); ax_wc.imshow(wc, interpolation='bilinear'); ax_wc.axis('off')
         visuals['word_cloud'] = fig_wc
-        
     all_emojis = [c for c in ''.join(df['Original Comment'].dropna()) if c in emoji.EMOJI_DATA]
     if all_emojis:
         visuals['emoji_ranking'] = Counter(all_emojis).most_common(5)
@@ -128,6 +131,7 @@ def generate_visuals(df):
 if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "open_chat" not in st.session_state: st.session_state.open_chat = False
 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
@@ -148,8 +152,8 @@ with st.sidebar:
     else:
         st.info("Analyze data to enable controls.")
 
-# --- CHAT MODAL (replaces sidebar chat) ---
-if "open_chat" in st.session_state and st.session_state.open_chat:
+# --- CHAT MODAL ---
+if st.session_state.open_chat:
     with st.dialog("IA Chat"):
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
@@ -183,7 +187,7 @@ if st.session_state.analysis_df is None:
     if st.button("✨ Analyze Now!"):
         comments = load_comments_from_source(uploaded_file, gsheets_link, st.session_state.text_input_val)
         if comments:
-            progress_bar_placeholder = st.empty() # Create a placeholder for the progress bar
+            progress_bar_placeholder = st.empty()
             st.session_state.analysis_df = run_concurrent_analysis(api_key, comments, progress_bar_placeholder)
             st.rerun()
         else:
@@ -193,7 +197,6 @@ else:
     df = st.session_state.analysis_df
     st.header("Analysis Dashboard")
     visuals = generate_visuals(df)
-    # ... (Display logic remains the same) ...
     col1, col2 = st.columns([2, 1])
     with col1:
         if 'sentiment_chart' in visuals:
