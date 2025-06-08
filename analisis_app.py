@@ -3,7 +3,6 @@
 # Final professional architecture with smart caching and robust UI.
 # --------------------------------------------------------------------------
 import streamlit as st
-st.write(f"Streamlit version in use: {st.__version__}")
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
