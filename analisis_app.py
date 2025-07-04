@@ -153,17 +153,7 @@ def generate_visuals(df, sentiment_colors, wordcloud_color_func=None):
         ax_sent.set_ylabel('Number of Comments')
         ax_sent.set_xticklabels(ax_sent.get_xticklabels(), rotation=0)
         ax_sent.set_title('Sentiment Distribution', fontsize=16) # Ponemos un título al gráfico
-    plot_order = [s for s in ['Positive', 'Negative', 'Neutral'] if s in sentiment_counts.index]
     
-    fig_sent, ax_sent = plt.subplots();
-    if not sentiment_counts.loc[plot_order].empty:
-        sentiment_counts.loc[plot_order].plot(kind='bar', ax=ax_sent, color=[color_map.get(s) for s in plot_order])
-        ax_sent.set_ylabel('Number of Comments'); ax_sent.set_xticklabels(ax_sent.get_xticklabels(), rotation=0)
-        total = len(df)
-        for p in ax_sent.patches:
-            percentage = f'{100 * p.get_height() / total:.1f}%'
-            ax_sent.annotate(percentage, (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 5), textcoords='offset points')
-    visuals['sentiment_chart'] = fig_sent
     
     # --- Word Cloud ---
     stopwords_es = ['de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'no', 'una', 'su', 'al', 'lo', 'como', 'más', 'mas', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'ha', 'me', 'si', 'porque', 'esta', 'cuando', 'muy', 'sin', 'sobre', 'también', 'fue', 'hasta', 'hay', 'mi', 'eso', 'todo', 'está', 'son', 'qué', 'pero', 'eso', 'te', 'estar', 'así', 'hacer', 'tiene', 'tienes', 'ser', 'eres', 'soy', 'es']
@@ -178,8 +168,7 @@ def generate_visuals(df, sentiment_colors, wordcloud_color_func=None):
         ax_wc.imshow(wc, interpolation='bilinear')
         ax_wc.axis('off')
         ax_wc.set_title('Word Cloud', fontsize=16) # Ponemos un título a la nube de palabras
-        fig_wc, ax_wc = plt.subplots(); ax_wc.imshow(wc, interpolation='bilinear'); ax_wc.axis('off')
-        visuals['word_cloud'] = fig_wc
+        
         
     # --- Emoji Ranking ---
     all_emojis = [c for c in ''.join(df['Original Comment'].dropna()) if c in emoji.EMOJI_DATA]
