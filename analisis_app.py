@@ -196,6 +196,16 @@ if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 
+# Inicialización de las variables de color para que siempre existan
+sentiment_colors_to_use = {
+    'Positive': '#2ca02c',
+    'Negative': '#d62728',
+    'Neutral': '#ff7f0e'
+}
+wordcloud_color_func_to_use = None # Por defecto, la nube de palabras usa sus colores aleatorios
+# Las variables 'image_for_colors' y 'extracted_colors' no necesitan inicialización global aquí
+# porque solo se usan dentro del `if` de la barra lateral.
+
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
