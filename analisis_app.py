@@ -334,7 +334,7 @@ if st.session_state.analysis_df is None:
         else:
             st.warning("Please provide comments to analyze.")
 else:
-   else:
+
         # --- Resultados del Dashboard ---
         df = st.session_state.analysis_df
         st.header("Analysis Dashboard")
