@@ -38,6 +38,7 @@ def parse_ai_batch_response(response_text, original_batch):
         if "```json" in response_text:
             json_str = response_text.split("```json")[1].split("```")[0]
         else:
+    
             json_str = response_text
         analyses = json.loads(json_str)
         for i, analysis in enumerate(analyses):
@@ -323,7 +324,11 @@ if st.session_state.analysis_df is None:
         else:
             st.warning("Please provide comments to analyze.")
 else:
-
+        st.write("Estado del Dashboard: Intento mostrar. analysis_df es:", "Vacio" if st.session_state.analysis_df is None else "Con datos")
+        if st.session_state.analysis_df is not None:
+            st.write("Dimensiones de los datos:", st.session_state.analysis_df.shape)
+        else:
+            st.error("Error: analysis_df está vacío. No se puede mostrar el dashboard.")
         # --- Resultados del Dashboard ---
         df = st.session_state.analysis_df
         st.header("Analysis Dashboard")
