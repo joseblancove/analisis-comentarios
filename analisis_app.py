@@ -3,6 +3,9 @@
 # All inputs are processed; all errors are classified as Neutral.
 # --------------------------------------------------------------------------
 import streamlit as st
+from PIL import Image
+from sklearn.cluster import MiniBatchKMeans
+import numpy as np
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
@@ -103,8 +106,27 @@ def load_comments_from_source(uploaded_file, gsheets_link, text_input):
     if text_input:
         return [line.strip() for line in text_input.split('\n') if line.strip()]
     return []
+# Esta es una nueva "receta" para tu dibujante
+# Le dice cómo sacar los colores principales de una imagen
+def extract_colors_from_image(image_file, num_colors=5):
+    """
+    Saca los colores principales de una foto.
+    Devuelve una lista de los códigos de esos colores.
+    """
+    img = Image.open(image_file).convert("RGB")
+    img = img.resize((100, 100)) # Hacemos la imagen pequeña para que sea más rápido
+    pixels = np.array(img).reshape(-1, 3) # Convertimos la imagen en una lista de puntos de color
 
-def generate_visuals(df):
+    # Usamos una herramienta inteligente para agrupar colores parecidos
+    kmeans = MiniBatchKMeans(n_clusters=num_colors, n_init=10, random_state=42)
+    kmeans.fit(pixels)
+    dominant_colors_rgb = kmeans.cluster_centers_.astype(int)
+
+    # Convertimos los colores a un formato que tu dibujante entienda (código hexadecimal)
+    hex_colors = ['#%02x%02x%02x' % (r, g, b) for r, g, b in dominant_colors_rgb]
+    return hex_colors
+
+def generate_visuals(df, sentiment_colors, wordcloud_color_func=None):
     """Generates all visual elements for the dashboard."""
     visuals = {};
     if df.empty: return visuals
@@ -115,7 +137,22 @@ def generate_visuals(df):
     # --- Sentiment Chart ---
     # CHANGE: Removed 'Error' from the map and order.
     sentiment_counts = df['Sentiment'].value_counts()
-    color_map = {'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e'}
+    # Usa los colores que tú elijas para cada sentimiento
+    color_map_sentiment = {
+        'Positive': sentiment_colors.get('Positive', '#2ca02c'), # Si no hay color, usa el verde por defecto
+        'Negative': sentiment_colors.get('Negative', '#d62728'), # Si no hay color, usa el rojo por defecto
+        'Neutral': sentiment_colors.get('Neutral', '#ff7f0e')   # Si no hay color, usa el naranja por defecto
+    }
+    plot_order = [s for s in ['Positive', 'Negative', 'Neutral'] if s in sentiment_counts.index]
+    
+    fig_sent, ax_sent = plt.subplots(figsize=(8, 5)) # Un tamaño mejor para el gráfico
+    if not sentiment_counts.loc[plot_order].empty:
+        # Asegúrate de que solo se usen los colores de los sentimientos que existen
+        colors_to_plot = [color_map_sentiment.get(s, '#cccccc') for s in plot_order]
+        sentiment_counts.loc[plot_order].plot(kind='bar', ax=ax_sent, color=colors_to_plot)
+        ax_sent.set_ylabel('Number of Comments')
+        ax_sent.set_xticklabels(ax_sent.get_xticklabels(), rotation=0)
+        ax_sent.set_title('Sentiment Distribution', fontsize=16) # Ponemos un título al gráfico
     plot_order = [s for s in ['Positive', 'Negative', 'Neutral'] if s in sentiment_counts.index]
     
     fig_sent, ax_sent = plt.subplots();
@@ -133,7 +170,14 @@ def generate_visuals(df):
     text_for_cloud = ' '.join(df['Original Comment'].dropna())
     text_no_emojis = ''.join(c for c in text_for_cloud if c not in emoji.EMOJI_DATA)
     if text_no_emojis.strip():
-        wc = WordCloud(width=800, height=400, background_color='white', stopwords=set(stopwords_es), collocations=False).generate(text_for_cloud)
+        wc = WordCloud(width=800, height=400, background_color='white',
+                       stopwords=set(stopwords_es), collocations=False,
+                       color_func=wordcloud_color_func # ¡Aquí le decimos que use la función de color que elegiste!
+                      ).generate(text_for_cloud)
+        fig_wc, ax_wc = plt.subplots(figsize=(10, 5)) # Un tamaño mejor para la nube de palabras
+        ax_wc.imshow(wc, interpolation='bilinear')
+        ax_wc.axis('off')
+        ax_wc.set_title('Word Cloud', fontsize=16) # Ponemos un título a la nube de palabras
         fig_wc, ax_wc = plt.subplots(); ax_wc.imshow(wc, interpolation='bilinear'); ax_wc.axis('off')
         visuals['word_cloud'] = fig_wc
         
@@ -160,6 +204,93 @@ except:
 # --- Sidebar ---
 with st.sidebar:
     st.title("Controls")
+    # --- Aquí empezamos con los controles para personalizar los colores ---
+    st.markdown("---") # Pone una línea separadora bonita
+    st.subheader("Personalizar Colores") # Un título para esta sección
+    
+    # --- Opciones para los colores del Gráfico de Sentimiento ---
+    st.markdown("### Colores del Gráfico de Sentimiento")
+    sentiment_palette_option = st.selectbox(
+        "Elige cómo quieres los colores del gráfico:",
+        ["Por Defecto", "Colores Personalizados", "Colores de una Imagen"], # Opciones para el usuario
+        key="sentiment_palette_option" # Un nombre único para este control
+    )
+
+    sentiment_colors_to_use = {} # Aquí guardaremos los colores que el usuario elija
+    if sentiment_palette_option == "Por Defecto":
+        sentiment_colors_to_use = {
+            'Positive': '#2ca02c', # Verde por defecto
+            'Negative': '#d62728', # Rojo por defecto
+            'Neutral': '#ff7f0e'   # Naranja por defecto
+        }
+    elif sentiment_palette_option == "Colores Personalizados":
+        st.write("O define tus propios colores:")
+        sentiment_colors_to_use['Positive'] = st.color_picker('Color para POSITIVO', '#2ca02c', key="pos_color")
+        sentiment_colors_to_use['Negative'] = st.color_picker('Color para NEGATIVO', '#d62728', key="neg_color")
+        sentiment_colors_to_use['Neutral'] = st.color_picker('Color para NEUTRAL', '#ff7f0e', key="neu_color")
+    
+    # --- Opciones para los colores de la Nube de Palabras ---
+    st.markdown("### Colores de la Nube de Palabras")
+    wordcloud_color_option = st.selectbox(
+        "Elige cómo quieres los colores de la nube de palabras:",
+        ["Por Defecto (Aleatorio)", "Azules", "Verdes", "Viridis", "Plasma", "Colores de una Imagen"],
+        key="wordcloud_palette_option"
+    )
+
+    image_for_colors = None # Aquí guardaremos la imagen si el usuario sube una
+    extracted_colors = [] # Aquí guardaremos los colores que saquemos de la imagen
+
+    # Si el usuario elige sacar colores de una imagen para cualquier gráfico
+    if sentiment_palette_option == "Colores de una Imagen" or wordcloud_color_option == "Colores de una Imagen":
+        image_for_colors = st.file_uploader("Sube una imagen para sacar colores:", type=["png", "jpg", "jpeg"], key="color_image_uploader")
+        if image_for_colors:
+            try:
+                extracted_colors = extract_colors_from_image(image_for_colors, num_colors=10) # Sacamos 10 colores
+                st.info(f"Se sacaron {len(extracted_colors)} colores de la imagen.")
+                
+                # Si el gráfico de sentimiento debe usar colores de la imagen
+                if sentiment_palette_option == "Colores de una Imagen":
+                    if len(extracted_colors) >= 3: # Si hay suficientes colores
+                        sentiment_colors_to_use['Positive'] = extracted_colors[0] # El primer color
+                        sentiment_colors_to_use['Neutral'] = extracted_colors[1]  # El segundo
+                        sentiment_colors_to_use['Negative'] = extracted_colors[2] # El tercero
+                    else:
+                        st.warning("No hay suficientes colores en la imagen para el gráfico de sentimiento. Usando colores por defecto.")
+                        sentiment_colors_to_use = {
+                            'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e'
+                        }
+                
+            except Exception as e:
+                st.error(f"Error al procesar la imagen para sacar colores: {e}")
+                extracted_colors = [] # Si hay un error, no hay colores extraídos
+        else:
+            st.warning("Por favor, sube una imagen para usar la opción 'Colores de una Imagen'.")
+            extracted_colors = []
+
+    wordcloud_color_func_to_use = None # Esta será la función para la nube de palabras
+
+    if wordcloud_color_option == "Azules":
+        wordcloud_color_func_to_use = plt.cm.Blues # Una paleta de azules de Matplotlib
+    elif wordcloud_color_option == "Verdes":
+        wordcloud_color_func_to_use = plt.cm.Greens # Una paleta de verdes
+    elif wordcloud_color_option == "Viridis":
+        wordcloud_color_func_to_use = plt.cm.viridis
+    elif wordcloud_color_option == "Plasma":
+        wordcloud_color_func_to_use = plt.cm.plasma
+    elif wordcloud_color_option == "Colores de una Imagen" and image_for_colors and extracted_colors:
+        # Si elegimos colores de la imagen y hay colores
+        from wordcloud import get_single_color_func
+        if extracted_colors:
+            # Creamos una función que elija un color aleatorio de los que sacamos de la imagen
+            wordcloud_color_func_to_use = lambda word, font_size, position, orientation, random_state, **kwargs: \
+                                          extracted_colors[random_state.randint(0, len(extracted_colors) -1)]
+        else:
+             wordcloud_color_func_to_use = None # Si no hay colores, volvemos al por defecto
+    else: # Si el usuario elige "Por Defecto (Aleatorio)" o si algo falló
+        wordcloud_color_func_to_use = None # La nube de palabras usará sus colores aleatorios por defecto
+
+    # --- Fin de los controles de personalización de color ---
+    st.markdown("---") # Otra línea separadora
     if st.session_state.analysis_df is not None:
         if st.button("Start New Analysis"):
             st.session_state.analysis_df = None; st.session_state.text_input_val = ""; st.session_state.chat_history = []; st.rerun()
@@ -210,7 +341,7 @@ else:
                 st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             st.rerun()
             
-    visuals = generate_visuals(df)
+    visuals = generate_visuals(df, sentiment_colors_to_use, wordcloud_color_func_to_use)
     
     col1, col2 = st.columns([2, 1])
     with col1:
