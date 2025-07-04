@@ -196,16 +196,6 @@ if "analysis_df" not in st.session_state: st.session_state.analysis_df = None
 if "text_input_val" not in st.session_state: st.session_state.text_input_val = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 
-# Inicialización de las variables de color para que siempre existan
-sentiment_colors_to_use = {
-    'Positive': '#2ca02c',
-    'Negative': '#d62728',
-    'Neutral': '#ff7f0e'
-}
-wordcloud_color_func_to_use = None # Por defecto, la nube de palabras usa sus colores aleatorios
-# Las variables 'image_for_colors' y 'extracted_colors' no necesitan inicialización global aquí
-# porque solo se usan dentro del `if` de la barra lateral.
-
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
@@ -252,30 +242,42 @@ with st.sidebar:
 
     # Si el usuario elige sacar colores de una imagen para cualquier gráfico
     if sentiment_palette_option == "Colores de una Imagen" or wordcloud_color_option == "Colores de una Imagen":
-        image_for_colors = st.file_uploader("Sube una imagen para sacar colores:", type=["png", "jpg", "jpeg"], key="color_image_uploader")
-        if image_for_colors:
-            try:
-                extracted_colors = extract_colors_from_image(image_for_colors, num_colors=10) # Sacamos 10 colores
-                st.info(f"Se sacaron {len(extracted_colors)} colores de la imagen.")
+        image_for_colors = st.file_uploader("Upload an image to extract colors:", type=["png", "jpg", "jpeg"], key="color_image_uploader")
+    
+    # Aquí es donde guardaremos los colores extraídos de la imagen en la sesión de Streamlit
+    if "extracted_image_colors" not in st.session_state:
+        st.session_state.extracted_image_colors = []
+
+    if image_for_colors:
+        try:
+            # Solo procesa la imagen si es nueva o no la hemos procesado antes en esta sesión
+            if image_for_colors != st.session_state.get("last_uploaded_image_hash"):
+                st.session_state.extracted_image_colors = extract_colors_from_image(image_for_colors, num_colors=10)
+                st.session_state.last_uploaded_image_hash = image_for_colors # Guarda un "hash" para saber que ya la procesamos
+                st.info(f"Se sacaron {len(st.session_state.extracted_image_colors)} colores de la imagen.")
+            
+            # Asignar los colores para el gráfico de sentimiento si se eligió "Colores de una Imagen"
+            if sentiment_palette_option == "Colores de una Imagen":
+                if len(st.session_state.extracted_image_colors) >= 3:
+                    st.session_state.sentiment_colors_from_image = {
+                        'Positive': st.session_state.extracted_image_colors[0],
+                        'Neutral': st.session_state.extracted_image_colors[1],
+                        'Negative': st.session_state.extracted_image_colors[2]
+                    }
+                else:
+                    st.warning("No hay suficientes colores en la imagen para el gráfico de sentimiento. Usando colores por defecto.")
+                    st.session_state.sentiment_colors_from_image = { # Colores de respaldo
+                        'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e'
+                    }
                 
-                # Si el gráfico de sentimiento debe usar colores de la imagen
-                if sentiment_palette_option == "Colores de una Imagen":
-                    if len(extracted_colors) >= 3: # Si hay suficientes colores
-                        sentiment_colors_to_use['Positive'] = extracted_colors[0] # El primer color
-                        sentiment_colors_to_use['Neutral'] = extracted_colors[1]  # El segundo
-                        sentiment_colors_to_use['Negative'] = extracted_colors[2] # El tercero
-                    else:
-                        st.warning("No hay suficientes colores en la imagen para el gráfico de sentimiento. Usando colores por defecto.")
-                        sentiment_colors_to_use = {
-                            'Positive': '#2ca02c', 'Negative': '#d62728', 'Neutral': '#ff7f0e'
-                        }
-                
-            except Exception as e:
-                st.error(f"Error al procesar la imagen para sacar colores: {e}")
-                extracted_colors = [] # Si hay un error, no hay colores extraídos
-        else:
-            st.warning("Por favor, sube una imagen para usar la opción 'Colores de una Imagen'.")
-            extracted_colors = []
+        except Exception as e:
+            st.error(f"Error al procesar la imagen para sacar colores: {e}")
+            st.session_state.extracted_image_colors = []
+            if "sentiment_colors_from_image" in st.session_state: del st.session_state.sentiment_colors_from_image # Limpiar
+    else:
+        st.warning("Por favor, sube una imagen para usar la opción 'Colores de una Imagen'.")
+        st.session_state.extracted_image_colors = []
+        if "sentiment_colors_from_image" in st.session_state: del st.session_state.sentiment_colors_from_image # Limpiar
 
     wordcloud_color_func_to_use = None # Esta será la función para la nube de palabras
 
@@ -332,48 +334,66 @@ if st.session_state.analysis_df is None:
         else:
             st.warning("Please provide comments to analyze.")
 else:
-    # --- Results Dashboard View ---
-    df = st.session_state.analysis_df
-    st.header("Analysis Dashboard")
-    
-    with st.expander("💬 Open IA Chat to ask about these results"):
-        # ... Chat logic remains the same
-        # ...
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]): st.markdown(message["content"])
-        if prompt := st.chat_input("Ask a question..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
-                full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
-                response = model.generate_content(full_prompt)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
-            st.rerun()
-            
-    visuals = generate_visuals(df, sentiment_colors_to_use, wordcloud_color_func_to_use)
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if 'sentiment_chart' in visuals:
-            with st.container(border=True): st.pyplot(visuals['sentiment_chart'])
-    with col2:
-        if 'emoji_ranking' in visuals:
-            with st.container(border=True):
-                st.subheader("Top Emojis")
-                for emoji_char, count in visuals['emoji_ranking']:
-                    st.markdown(f"### {emoji_char} &nbsp;&nbsp;`x{count}`")
+   else:
+        # --- Resultados del Dashboard ---
+        df = st.session_state.analysis_df
+        st.header("Analysis Dashboard")
+        
+        with st.expander("💬 Open IA Chat to ask about these results"):
+            # ... (Tu lógica del chat existente, no la modifiques aquí) ...
+            pass
 
-    if 'word_cloud' in visuals:
-        with st.container(border=True):
-            st.subheader("Word Cloud")
-            st.pyplot(visuals['word_cloud'])
+        # --- DETERMINACIÓN FINAL DE COLORES PARA LOS GRÁFICOS ---
+        # Estos son los valores que usará generate_visuals
+        sentiment_colors_to_use = {
+            'Positive': '#2ca02c', # Por defecto
+            'Negative': '#d62728', # Por defecto
+            'Neutral': '#ff7f0e'   # Por defecto
+        }
+        wordcloud_color_func_to_use = None # Por defecto, aleatorio
 
-    with st.container(border=True):
-        st.subheader("Detailed Data")
-        cols = df.columns.tolist()
-        if 'Original Comment' in cols:
-            cols.insert(0, cols.pop(cols.index('Original Comment')))
-            st.dataframe(df[cols])
-        else:
-            st.dataframe(df)
+        # Obtener las opciones que el usuario eligió en la barra lateral
+        # Usamos .get() con un valor por defecto para evitar errores si aún no se han seleccionado
+        sentiment_palette_option = st.session_state.get("sentiment_palette_option", "Por Defecto")
+        wordcloud_color_option = st.session_state.get("wordcloud_palette_option", "Por Defecto (Aleatorio)")
+
+        # Lógica para el Gráfico de Sentimiento
+        if sentiment_palette_option == "Colores Personalizados":
+            sentiment_colors_to_use['Positive'] = st.session_state.get('pos_color', '#2ca02c')
+            sentiment_colors_to_use['Negative'] = st.session_state.get('neg_color', '#d62728')
+            sentiment_colors_to_use['Neutral'] = st.session_state.get('neu_color', '#ff7f0e')
+        elif sentiment_palette_option == "Colores de una Imagen":
+            # Usar los colores que se guardaron en la sesión desde el sidebar
+            if "sentiment_colors_from_image" in st.session_state:
+                sentiment_colors_to_use = st.session_state.sentiment_colors_from_image
+            else: # Fallback si por alguna razón no se guardaron
+                st.warning("Colores de imagen no disponibles para el gráfico de sentimiento. Usando valores por defecto.")
+
+
+        # Lógica para la Nube de Palabras
+        if wordcloud_color_option == "Azules":
+            wordcloud_color_func_to_use = plt.cm.Blues
+        elif wordcloud_color_option == "Verdes":
+            wordcloud_color_func_to_use = plt.cm.Greens
+        elif wordcloud_color_option == "Viridis":
+            wordcloud_color_func_to_use = plt.cm.viridis
+        elif wordcloud_color_option == "Plasma":
+            wordcloud_color_func_to_use = plt.cm.plasma
+        elif wordcloud_color_option == "Colores de una Imagen":
+            # Usar los colores extraídos y guardados en la sesión
+            extracted_colors_for_wc = st.session_state.get("extracted_image_colors", [])
+            if extracted_colors_for_wc:
+                # Asegúrate que esta importación de `get_single_color_func` esté al principio del archivo con las otras importaciones de `wordcloud`
+                wordcloud_color_func_to_use = lambda word, font_size, position, orientation, random_state, **kwargs: \
+                                              extracted_colors_for_wc[random_state.randint(0, len(extracted_colors_for_wc) -1)]
+            else:
+                st.warning("No hay colores de imagen para la nube de palabras. Usando valores por defecto.")
+                wordcloud_color_func_to_use = None
+        # Si es "Por Defecto (Aleatorio)", wordcloud_color_func_to_use ya es None, lo cual es correcto.
+        
+        # --- FIN DE DETERMINACIÓN FINAL DE COLORES ---
+
+        # Ahora sí, genera los visuales con las variables ya definidas y actualizadas
+        visuals = generate_visuals(df, sentiment_colors_to_use, wordcloud_color_func_to_use)
+        
+        # ... (El resto de tu código para mostrar los gráficos, no lo modifiques) ...
