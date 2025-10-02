@@ -49,7 +49,7 @@ def parse_ai_batch_response(response_text, original_batch):
 def analyze_comment_batch_cached(_api_key, comment_batch):
     """Worker function to analyze a BATCH of comments."""
     genai.configure(api_key=_api_key)
-    model = genai.GenerativeModel('gemini-1.5-pro')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     comments_str = "\n".join([f'{i+1}. "{comment}"' for i, comment in enumerate(comment_batch)])
     prompt = f"""
@@ -203,7 +203,7 @@ else:
         if prompt := st.chat_input("Ask a question..."):
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             with st.spinner("Thinking..."):
-                model = genai.GenerativeModel('gemini-1.5-pro')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 context_for_ia = f"Dataframe:\n{st.session_state.analysis_df.to_string()}"
                 full_prompt = f"You are an expert business analyst. Based on the following data analysis, answer the user's question concisely.\n--- DATA ---\n{context_for_ia}\n--- END DATA ---\nQUESTION: {prompt}"
                 response = model.generate_content(full_prompt)
