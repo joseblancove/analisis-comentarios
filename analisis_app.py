@@ -1,5 +1,6 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Vertical Bars (No Y labels + Emoji Wide Spacing)
+# COMMENT ANALYSIS PLATFORM - Final Polished UI
+# More emoji-label spacing + better Word Cloud readability
 # ==========================================================================
 import streamlit as st
 import pandas as pd
@@ -75,7 +76,7 @@ h1, h2, h3, h4 {
     margin-bottom: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     font-size: 1.8rem;
-    gap: 70px; /* Aumentado 5x el espacio entre emoji y contador */
+    gap: 120px; /* Más separación entre emoji y etiqueta */
 }
 
 .emoji-count {
@@ -159,7 +160,7 @@ def generate_visuals(df):
     visuals = {}
     if df.empty: return visuals
 
-    # --- Sentiment Chart (Vertical bars, horizontal labels, sin números laterales) ---
+    # --- Sentiment Chart ---
     df['Sentiment'] = df['Sentiment'].str.strip()
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ecc71', 'Neutral': '#f1c40f', 'Negative': '#e74c3c'}
@@ -167,16 +168,13 @@ def generate_visuals(df):
     fig_sent, ax = plt.subplots()
     fig_sent.patch.set_alpha(0)
     ax.set_facecolor('none')
-
     sentiment_counts.plot(kind='bar', ax=ax, color=[color_map.get(x, '#ccc') for x in sentiment_counts.index])
-
-    ax.set_ylabel('')  # sin texto lateral
+    ax.set_ylabel('')
     ax.set_xlabel('')
     ax.tick_params(axis='x', labelrotation=0, labelsize=11)
-    ax.tick_params(axis='y', left=False, labelleft=False)  # <-- Oculta números 200, 400, 600
+    ax.tick_params(axis='y', left=False, labelleft=False)
     for spine in ['top', 'right', 'left', 'bottom']:
         ax.spines[spine].set_visible(False)
-
     total = sentiment_counts.sum()
     for p in ax.patches:
         percent = f"{100*p.get_height()/total:.0f}%"
@@ -184,7 +182,7 @@ def generate_visuals(df):
                     ha='center', va='bottom', fontsize=10, color='black')
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud ---
+    # --- Word Cloud (más aire entre palabras) ---
     text = ' '.join(df['Original Comment'].dropna())
     stopwords_es = set(list(STOPWORDS) + [
         "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
@@ -199,10 +197,17 @@ def generate_visuals(df):
     ])
 
     wc = WordCloud(
-        width=900, height=450, background_color='white',
-        colormap=custom_colors, prefer_horizontal=0.95,
-        collocations=False, stopwords=stopwords_es,
-        max_words=50, max_font_size=90, min_font_size=15, margin=3
+        width=900, height=450,
+        background_color='white',
+        colormap=custom_colors,
+        prefer_horizontal=0.95,
+        collocations=False,
+        stopwords=stopwords_es,
+        max_words=50,
+        max_font_size=90,
+        min_font_size=15,
+        margin=6,  # ← más espacio entre palabras
+        relative_scaling=0.5  # ← dispersión más equilibrada
     ).generate(text)
 
     fig_wc, ax_wc = plt.subplots()
@@ -271,6 +276,7 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
 
 
