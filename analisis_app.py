@@ -1,5 +1,5 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Refined UI (Top Emojis compact + WordCloud limpio)
+# COMMENT ANALYSIS PLATFORM - Vertical Bars (Horizontal Labels + Emoji Spacing)
 # ==========================================================================
 import streamlit as st
 import pandas as pd
@@ -64,7 +64,7 @@ h1, h2, h3, h4 {
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-/* === EMOJI BADGES (compact view) === */
+/* === EMOJI BADGES (espaciado equilibrado) === */
 .emoji-card {
     display: flex;
     align-items: center;
@@ -75,13 +75,13 @@ h1, h2, h3, h4 {
     margin-bottom: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     font-size: 1.8rem;
-    gap: 10px;
+    gap: 14px; /* Espaciado moderado */
 }
 
 .emoji-count {
     color: white;
     font-weight: 600;
-    padding: 5px 10px;
+    padding: 5px 12px;
     border-radius: 8px;
     font-size: 0.9rem;
 }
@@ -159,24 +159,31 @@ def generate_visuals(df):
     visuals = {}
     if df.empty: return visuals
 
-    # --- Sentiment Chart ---
+    # --- Sentiment Chart (Vertical bars, horizontal labels) ---
     df['Sentiment'] = df['Sentiment'].str.strip()
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ecc71', 'Neutral': '#f1c40f', 'Negative': '#e74c3c'}
+
     fig_sent, ax = plt.subplots()
     fig_sent.patch.set_alpha(0)
     ax.set_facecolor('none')
+
     sentiment_counts.plot(kind='bar', ax=ax, color=[color_map.get(x, '#ccc') for x in sentiment_counts.index])
-    ax.set_ylabel('Count')
+
+    ax.set_ylabel('')  # Sin texto lateral
+    ax.set_xlabel('')
+    ax.tick_params(axis='x', labelrotation=0, labelsize=11)  # <-- Etiquetas horizontales
+    ax.tick_params(axis='y', labelsize=10)
+
     total = sentiment_counts.sum()
     for p in ax.patches:
         percent = f"{100*p.get_height()/total:.0f}%"
-        ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), ha='center', va='bottom', fontsize=10)
+        ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), 
+                    ha='center', va='bottom', fontsize=10, color='black')
     visuals['sentiment_chart'] = fig_sent
 
     # --- Word Cloud (limpio, max 50 palabras, fondo claro) ---
     text = ' '.join(df['Original Comment'].dropna())
-
     stopwords_es = set(list(STOPWORDS) + [
         "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
         "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
@@ -190,17 +197,10 @@ def generate_visuals(df):
     ])
 
     wc = WordCloud(
-        width=900,
-        height=450,
-        background_color='white',
-        colormap=custom_colors,
-        prefer_horizontal=0.95,
-        collocations=False,
-        stopwords=stopwords_es,
-        max_words=50,
-        max_font_size=90,
-        min_font_size=15,
-        margin=3
+        width=900, height=450, background_color='white',
+        colormap=custom_colors, prefer_horizontal=0.95,
+        collocations=False, stopwords=stopwords_es,
+        max_words=50, max_font_size=90, min_font_size=15, margin=3
     ).generate(text)
 
     fig_wc, ax_wc = plt.subplots()
@@ -269,6 +269,7 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
 
 
