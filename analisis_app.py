@@ -1,17 +1,17 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Modern UI Edition (Inspired by Mockup)
+# COMMENT ANALYSIS PLATFORM - Modern UI Edition (Modo Claro)
 # ==========================================================================
 import streamlit as st
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import google.generativeai as genai
-import time
 import emoji
 from collections import Counter
 import concurrent.futures
 import re
 import json
+from matplotlib.colors import ListedColormap
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Comment Analysis Dashboard", layout="wide")
@@ -19,8 +19,9 @@ st.set_page_config(page_title="Comment Analysis Dashboard", layout="wide")
 # --- STYLES ---
 st.markdown("""
 <style>
-/* === GLOBAL === */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+/* === GLOBAL === */
 .stApp {
     background-color: #FAFAFA;
     font-family: 'Inter', sans-serif;
@@ -89,7 +90,6 @@ h1, h2, h3, h4 {
 .purple {background-color: #9C27B0;}
 </style>
 """, unsafe_allow_html=True)
-
 
 # --- CORE FUNCTIONS ---
 def parse_ai_batch_response(response_text, original_batch):
@@ -173,9 +173,19 @@ def generate_visuals(df):
         ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), ha='center', va='bottom', fontsize=10)
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud ---
+    # --- Word Cloud (Modo Claro) ---
     text = ' '.join(df['Original Comment'].dropna())
-    wc = WordCloud(width=800, height=400, background_color='#1B1D2A', colormap='cool').generate(text)
+
+    custom_colors = ListedColormap(["#1976D2", "#42A5F5", "#5E35B1", "#9C27B0", "#FFB300", "#FB8C00"])
+    wc = WordCloud(
+        width=800,
+        height=400,
+        background_color='white',
+        colormap=custom_colors,
+        prefer_horizontal=0.9,
+        collocations=False
+    ).generate(text)
+
     fig_wc, ax_wc = plt.subplots()
     ax_wc.imshow(wc, interpolation='bilinear')
     ax_wc.axis('off')
@@ -243,3 +253,4 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
