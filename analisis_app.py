@@ -1,9 +1,9 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Modern UI Edition (Modo Claro)
+# COMMENT ANALYSIS PLATFORM - Modern UI Edition (Modo Claro + WordCloud Mejorado)
 # ==========================================================================
 import streamlit as st
 import pandas as pd
-from wordcloud import WordCloud
+from wordcloud import WordCloud, STOPWORDS
 import matplotlib.pyplot as plt
 import google.generativeai as genai
 import emoji
@@ -173,17 +173,32 @@ def generate_visuals(df):
         ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), ha='center', va='bottom', fontsize=10)
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud (Modo Claro) ---
+    # --- Word Cloud (Fondo Claro y Colores Suaves) ---
     text = ' '.join(df['Original Comment'].dropna())
 
-    custom_colors = ListedColormap(["#1976D2", "#42A5F5", "#5E35B1", "#9C27B0", "#FFB300", "#FB8C00"])
+    stopwords_es = set(list(STOPWORDS) + [
+        "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
+        "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
+        "más", "sus", "le", "ya", "o", "este", "ha", "me", "si",
+        "porque", "esta", "muy", "sin", "sobre", "también", "fue", "mi"
+    ])
+
+    custom_colors = ListedColormap([
+        "#1E88E5", "#42A5F5", "#5E35B1", "#9C27B0", "#FDD835", "#FB8C00"
+    ])
+
     wc = WordCloud(
-        width=800,
-        height=400,
+        width=900,
+        height=450,
         background_color='white',
         colormap=custom_colors,
-        prefer_horizontal=0.9,
-        collocations=False
+        prefer_horizontal=0.95,
+        collocations=False,
+        stopwords=stopwords_es,
+        max_words=120,
+        max_font_size=80,
+        min_font_size=15,
+        margin=3
     ).generate(text)
 
     fig_wc, ax_wc = plt.subplots()
@@ -253,4 +268,5 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
