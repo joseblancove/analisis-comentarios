@@ -1,5 +1,5 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Modern UI Edition (Modo Claro + WordCloud Mejorado)
+# COMMENT ANALYSIS PLATFORM - Refined UI (Top Emojis compact + WordCloud limpio)
 # ==========================================================================
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,6 @@ import google.generativeai as genai
 import emoji
 from collections import Counter
 import concurrent.futures
-import re
 import json
 from matplotlib.colors import ListedColormap
 
@@ -65,25 +64,28 @@ h1, h2, h3, h4 {
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-/* === EMOJI BADGES === */
+/* === EMOJI BADGES (compact view) === */
 .emoji-card {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     background-color: #ffffff;
     border-radius: 12px;
-    padding: 10px 18px;
+    padding: 10px 0;
     margin-bottom: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    font-size: 1.6rem;
+    font-size: 1.8rem;
+    gap: 10px;
 }
+
 .emoji-count {
     color: white;
     font-weight: 600;
-    padding: 6px 14px;
+    padding: 5px 10px;
     border-radius: 8px;
     font-size: 0.9rem;
 }
+
 .pink {background-color: #E11D74;}
 .orange {background-color: #FF6B00;}
 .yellow {background-color: #FFC107;}
@@ -103,7 +105,7 @@ def parse_ai_batch_response(response_text, original_batch):
             if i < len(original_batch):
                 analysis['Original Comment'] = original_batch[i]
         return analyses
-    except (json.JSONDecodeError, IndexError):
+    except Exception:
         return [{'Original Comment': c, 'Sentiment': 'Neutral', 'Explanation': 'Unanalyzable content.'} for c in original_batch]
 
 
@@ -111,7 +113,6 @@ def parse_ai_batch_response(response_text, original_batch):
 def analyze_comment_batch_cached(_api_key, comment_batch):
     genai.configure(api_key=_api_key)
     model = genai.GenerativeModel('gemini-2.5-flash')
-
     comments_str = "\n".join([f'{i+1}. "{comment}"' for i, comment in enumerate(comment_batch)])
     prompt = f"""
     Act as a sentiment analysis API. Analyze EACH of the following customer comments.
@@ -135,9 +136,9 @@ def run_batch_analysis(api_key, comments):
     comment_batches = [comments[i:i + batch_size] for i in range(0, len(comments), batch_size)]
     with st.spinner(f"Analyzing {len(comments)} comments in {len(comment_batches)} batches..."):
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_batch = {executor.submit(analyze_comment_batch_cached, api_key, batch): batch for batch in comment_batches}
-            for future in concurrent.futures.as_completed(future_to_batch):
-                results.extend(future.result())
+            futures = [executor.submit(analyze_comment_batch_cached, api_key, batch) for batch in comment_batches]
+            for f in concurrent.futures.as_completed(futures):
+                results.extend(f.result())
     return pd.DataFrame(results)
 
 
@@ -173,14 +174,15 @@ def generate_visuals(df):
         ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), ha='center', va='bottom', fontsize=10)
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud (Fondo Claro y Colores Suaves) ---
+    # --- Word Cloud (limpio, max 50 palabras, fondo claro) ---
     text = ' '.join(df['Original Comment'].dropna())
 
     stopwords_es = set(list(STOPWORDS) + [
         "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
         "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
-        "más", "sus", "le", "ya", "o", "este", "ha", "me", "si",
-        "porque", "esta", "muy", "sin", "sobre", "también", "fue", "mi"
+        "más", "sus", "le", "ya", "o", "este", "ha", "me", "si", "mi", "yo",
+        "porque", "esta", "muy", "sin", "sobre", "también", "fue", "esa",
+        "son", "está", "ni", "donde", "solo", "puede", "uno", "delos"
     ])
 
     custom_colors = ListedColormap([
@@ -195,8 +197,8 @@ def generate_visuals(df):
         prefer_horizontal=0.95,
         collocations=False,
         stopwords=stopwords_es,
-        max_words=120,
-        max_font_size=80,
+        max_words=50,
+        max_font_size=90,
         min_font_size=15,
         margin=3
     ).generate(text)
@@ -255,8 +257,7 @@ else:
                     color_class = color_classes[idx % len(color_classes)]
                     st.markdown(f"""
                     <div class="emoji-card">
-                        <div>{emoji_char}</div>
-                        <div class="emoji-count {color_class}">x{count}</div>
+                        <div>{emoji_char}<span class="emoji-count {color_class}">x{count}</span></div>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -268,5 +269,6 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
 
