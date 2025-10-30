@@ -1,6 +1,6 @@
 # ==========================================================================
-# COMMENT ANALYSIS DASHBOARD - Final Premium UI Version
-# Top Emojis with wide separation + colorful and airy Word Cloud
+# COMMENT ANALYSIS DASHBOARD - Final Premium UX/UI Version
+# Includes improved Top Emojis layout and clean bright Word Cloud
 # ==========================================================================
 import streamlit as st
 import pandas as pd
@@ -13,10 +13,11 @@ import concurrent.futures
 import json
 from matplotlib.colors import ListedColormap
 
-# --- PAGE CONFIGURATION ---
+
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="Comment Analysis Dashboard", layout="wide")
 
-# --- STYLES ---
+# --- STYLE INJECTION ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
@@ -27,7 +28,7 @@ st.markdown("""
     font-family: 'Inter', sans-serif;
 }
 
-/* === CARD CONTAINERS === */
+/* === CARDS === */
 [data-testid="stHorizontalBlock"] > div {
     background-color: #FFFFFF;
     border-radius: 18px;
@@ -57,7 +58,7 @@ h1, h2, h3, h4 {
     background: linear-gradient(90deg, #7B1FA2 0%, #5A55FF 100%);
 }
 
-/* === PANEL CARDS === */
+/* === CONTAINERS === */
 .st-emotion-cache-1r4qj8v, .st-emotion-cache-0 {
     background-color: #FFFFFF;
     border-radius: 18px;
@@ -65,37 +66,55 @@ h1, h2, h3, h4 {
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-/* === EMOJI BADGES (con separación amplia tipo ejemplo) === */
+/* === EMOJI CARDS (perfect separation - like reference image “bien”) === */
 .emoji-card {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
     background-color: #ffffff;
-    border-radius: 12px;
-    padding: 16px 24px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    font-size: 2rem;
-    gap: 180px; /* Separación amplia entre emoji y etiqueta */
+    border-radius: 14px;
+    padding: 18px 26px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: all 0.2s ease-in-out;
+}
+
+.emoji-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.emoji-icon {
+    font-size: 2.3rem;
+    line-height: 1;
+    flex-shrink: 0;
 }
 
 .emoji-count {
     color: white;
     font-weight: 600;
-    padding: 6px 16px;
+    font-size: 1.05rem;
+    padding: 6px 18px;
     border-radius: 10px;
-    font-size: 1rem;
+    min-width: 58px;
+    text-align: center;
+    margin-left: 20px; /* adds clean space between emoji and label */
 }
 
-.pink {background-color: #E11D74;}
-.orange {background-color: #FF6B00;}
-.yellow {background-color: #FFC107;}
-.purple {background-color: #9C27B0;}
+/* === COLORS === */
+.pink { background-color: #E11D74; }
+.orange { background-color: #FF6B00; }
+.yellow { background-color: #FFC107; }
+.purple { background-color: #9C27B0; }
+.red { background-color: #E91E63; }
+
 </style>
 """, unsafe_allow_html=True)
 
+
 # --- CORE FUNCTIONS ---
 def parse_ai_batch_response(response_text, original_batch):
+    """Parse Gemini JSON output safely."""
     try:
         if "```json" in response_text:
             json_str = response_text.split("```json")[1].split("```")[0]
@@ -112,6 +131,7 @@ def parse_ai_batch_response(response_text, original_batch):
 
 @st.cache_data(ttl="24h")
 def analyze_comment_batch_cached(_api_key, comment_batch):
+    """Batch analysis with Gemini."""
     genai.configure(api_key=_api_key)
     model = genai.GenerativeModel('gemini-2.5-flash')
     comments_str = "\n".join([f'{i+1}. "{comment}"' for i, comment in enumerate(comment_batch)])
@@ -132,10 +152,11 @@ def analyze_comment_batch_cached(_api_key, comment_batch):
 
 
 def run_batch_analysis(api_key, comments):
+    """Handles batch execution with concurrency."""
     results = []
     batch_size = 50
     comment_batches = [comments[i:i + batch_size] for i in range(0, len(comments), batch_size)]
-    with st.spinner(f"Analyzing {len(comments)} comments in {len(comment_batches)} batches..."):
+    with st.spinner(f"Analyzing {len(comments)} comments..."):
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(analyze_comment_batch_cached, api_key, batch) for batch in comment_batches]
             for f in concurrent.futures.as_completed(futures):
@@ -144,6 +165,7 @@ def run_batch_analysis(api_key, comments):
 
 
 def load_comments(uploaded_file, gsheets_link, text_input):
+    """Handles all input options."""
     if uploaded_file:
         df = pd.read_excel(uploaded_file, header=None)
         return df.iloc[:, 0].dropna().astype(str).tolist()
@@ -157,10 +179,11 @@ def load_comments(uploaded_file, gsheets_link, text_input):
 
 
 def generate_visuals(df):
+    """Creates the visuals for the dashboard."""
     visuals = {}
     if df.empty: return visuals
 
-    # --- Sentiment Chart ---
+    # --- SENTIMENT BAR CHART ---
     df['Sentiment'] = df['Sentiment'].str.strip()
     sentiment_counts = df['Sentiment'].value_counts()
     color_map = {'Positive': '#2ecc71', 'Neutral': '#f1c40f', 'Negative': '#e74c3c'}
@@ -178,36 +201,30 @@ def generate_visuals(df):
     total = sentiment_counts.sum()
     for p in ax.patches:
         percent = f"{100*p.get_height()/total:.0f}%"
-        ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()), 
+        ax.annotate(percent, (p.get_x() + p.get_width()/2, p.get_height()),
                     ha='center', va='bottom', fontsize=10, color='black')
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud (colorido, aireado, limpio) ---
+    # --- WORD CLOUD ---
     text = ' '.join(df['Original Comment'].dropna())
     stopwords_es = set(list(STOPWORDS) + [
-        "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
-        "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
-        "más", "sus", "le", "ya", "o", "este", "ha", "me", "si", "mi", "yo",
-        "porque", "esta", "muy", "sin", "sobre", "también", "fue", "esa",
-        "son", "está", "ni", "solo", "puede", "uno", "delos"
+        "de","la","que","el","en","y","a","los","del","se","las","por","un",
+        "para","con","no","una","su","al","lo","como","más","sus","le","ya",
+        "o","este","ha","me","si","mi","yo","porque","esta","muy","sin",
+        "sobre","también","fue","esa","son","está","ni","solo","puede",
+        "uno","delos"
     ])
 
     colorful_map = ListedColormap([
-        "#FF5722", "#4CAF50", "#2196F3", "#FFC107", "#9C27B0", "#E91E63", "#00BCD4"
+        "#FF5722","#4CAF50","#2196F3","#FFC107","#9C27B0","#E91E63","#00BCD4"
     ])
 
     wc = WordCloud(
-        width=900, height=450,
-        background_color='white',
-        colormap=colorful_map,
-        prefer_horizontal=0.9,
-        collocations=False,
-        stopwords=stopwords_es,
-        max_words=60,
-        max_font_size=110,
-        min_font_size=15,
-        margin=8,  # más aire entre palabras
-        relative_scaling=0.3
+        width=900, height=450, background_color='white',
+        colormap=colorful_map, prefer_horizontal=0.9,
+        collocations=False, stopwords=stopwords_es,
+        max_words=60, max_font_size=110, min_font_size=15,
+        margin=10, relative_scaling=0.3
     ).generate(text)
 
     fig_wc, ax_wc = plt.subplots()
@@ -215,14 +232,15 @@ def generate_visuals(df):
     ax_wc.axis('off')
     visuals['word_cloud'] = fig_wc
 
-    # --- Top Emojis ---
+    # --- TOP EMOJIS ---
     all_emojis = [c for c in ''.join(df['Original Comment'].dropna()) if c in emoji.EMOJI_DATA]
     if all_emojis:
         visuals['emoji_ranking'] = Counter(all_emojis).most_common(5)
+
     return visuals
 
 
-# --- APP LAYOUT ---
+# --- APP STRUCTURE ---
 if "analysis_df" not in st.session_state:
     st.session_state.analysis_df = None
 
@@ -231,7 +249,7 @@ st.title("Sentiment Analysis Dashboard")
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("⚠️ API key missing in Streamlit Secrets.")
+    st.error("⚠️ Google API key missing in Streamlit Secrets.")
     st.stop()
 
 if st.session_state.analysis_df is None:
@@ -259,12 +277,13 @@ else:
         if 'emoji_ranking' in visuals:
             with st.container():
                 st.subheader("Top Emojis")
-                color_classes = ["pink", "orange", "yellow", "purple", "pink"]
+                color_classes = ["pink", "orange", "yellow", "purple", "red"]
                 for idx, (emoji_char, count) in enumerate(visuals['emoji_ranking']):
                     color_class = color_classes[idx % len(color_classes)]
                     st.markdown(f"""
                     <div class="emoji-card">
-                        <div>{emoji_char}<span class="emoji-count {color_class}">x{count}</span></div>
+                        <div class="emoji-icon">{emoji_char}</div>
+                        <div class="emoji-count {color_class}">x{count}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -276,6 +295,7 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
 
 
