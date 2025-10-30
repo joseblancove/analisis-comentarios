@@ -1,6 +1,6 @@
 # ==========================================================================
-# COMMENT ANALYSIS PLATFORM - Final Polished UI
-# More emoji-label spacing + better Word Cloud readability
+# COMMENT ANALYSIS DASHBOARD - Final Premium UI Version
+# Top Emojis with wide separation + colorful and airy Word Cloud
 # ==========================================================================
 import streamlit as st
 import pandas as pd
@@ -65,26 +65,26 @@ h1, h2, h3, h4 {
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-/* === EMOJI BADGES (mayor separación) === */
+/* === EMOJI BADGES (con separación amplia tipo ejemplo) === */
 .emoji-card {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     background-color: #ffffff;
     border-radius: 12px;
-    padding: 10px 0;
-    margin-bottom: 10px;
+    padding: 16px 24px;
+    margin-bottom: 12px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    font-size: 1.8rem;
-    gap: 120px; /* Más separación entre emoji y etiqueta */
+    font-size: 2rem;
+    gap: 180px; /* Separación amplia entre emoji y etiqueta */
 }
 
 .emoji-count {
     color: white;
     font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 8px;
-    font-size: 0.9rem;
+    padding: 6px 16px;
+    border-radius: 10px;
+    font-size: 1rem;
 }
 
 .pink {background-color: #E11D74;}
@@ -182,32 +182,32 @@ def generate_visuals(df):
                     ha='center', va='bottom', fontsize=10, color='black')
     visuals['sentiment_chart'] = fig_sent
 
-    # --- Word Cloud (más aire entre palabras) ---
+    # --- Word Cloud (colorido, aireado, limpio) ---
     text = ' '.join(df['Original Comment'].dropna())
     stopwords_es = set(list(STOPWORDS) + [
         "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
         "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
         "más", "sus", "le", "ya", "o", "este", "ha", "me", "si", "mi", "yo",
         "porque", "esta", "muy", "sin", "sobre", "también", "fue", "esa",
-        "son", "está", "ni", "donde", "solo", "puede", "uno", "delos"
+        "son", "está", "ni", "solo", "puede", "uno", "delos"
     ])
 
-    custom_colors = ListedColormap([
-        "#1E88E5", "#42A5F5", "#5E35B1", "#9C27B0", "#FDD835", "#FB8C00"
+    colorful_map = ListedColormap([
+        "#FF5722", "#4CAF50", "#2196F3", "#FFC107", "#9C27B0", "#E91E63", "#00BCD4"
     ])
 
     wc = WordCloud(
         width=900, height=450,
         background_color='white',
-        colormap=custom_colors,
-        prefer_horizontal=0.95,
+        colormap=colorful_map,
+        prefer_horizontal=0.9,
         collocations=False,
         stopwords=stopwords_es,
-        max_words=50,
-        max_font_size=90,
+        max_words=60,
+        max_font_size=110,
         min_font_size=15,
-        margin=6,  # ← más espacio entre palabras
-        relative_scaling=0.5  # ← dispersión más equilibrada
+        margin=8,  # más aire entre palabras
+        relative_scaling=0.3
     ).generate(text)
 
     fig_wc, ax_wc = plt.subplots()
@@ -276,6 +276,7 @@ else:
     with st.container():
         st.subheader("Detailed Data")
         st.dataframe(df)
+
 
 
 
